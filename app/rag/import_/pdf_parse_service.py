@@ -1,4 +1,5 @@
 import os
+import shutil
 import time
 from pathlib import Path
 
@@ -37,7 +38,7 @@ def validate_pdf_paths(state: ImportGraphState) -> tuple[Path, Path]:
     return pdf_path_obj, local_dir_obj
 
 
-def upload_pdf_and_poll(pdf_path_obj) -> str:
+def upload_pdf_and_poll(pdf_path_obj):
     header = {
         "Content-Type": "application/json",
         # .env配置文件 -> config / minerU_config / infra / config / providers / miner_u...
@@ -144,6 +145,50 @@ def upload_pdf_and_poll(pdf_path_obj) -> str:
             continue
 
 
+def download_and_extract_markdown(zip_url:str, local_dir_obj:Path, file_name:str):
+    # 1.下载
+    with requests.Session() as session:
+        session.trust_env = False
+        response = session.get(zip_url, timeout=MINERU_POLL_TIMEOUT_SECONDS)
+        if response.status_code != 200:
+            logger.error(f"向指定地址:{zip_url}下载zip文件报错,状态码为:{response.status_code},业务无法继续进行!!")
+            raise RuntimeError(f"向指定地址:{zip_url}下载zip文件报错,状态码为:{response.status_code},业务无法继续进行!!")
+
+    zip_file_obj:Path = local_dir_obj / f"{file_name}.zip"
+    zip_file_obj.write_bytes(response.content)
+    # 2.解压
+    # 创建解压后的文件夹
+    zip_extract_dir:Path = local_dir_obj / file_name
+    if zip_extract_dir.is_dir():
+        shutil.rmtree(zip_extract_dir)
+
+    zip_extract_dir.mkdir(parents=True,exist_ok=True)
+    shutil.unpack_archive(zip_file_obj,zip_extract_dir)
+
+    # 找到文件夹指定类型文件.md
+    md_obj_list:list[Path] = list(zip_extract_dir.rglob("*.md"))
+    if len(md_obj_list)==0:
+        logger.error(f"向指定地址:{zip_url}下载zip文件，解压后发现没有md文件，业务无法继续进行!!")
+        raise ValueError(f"向指定地址:{zip_url}下载zip文件，解压后发现没有md文件，业务无法继续进行!!")
+
+    for current_md_obj in md_obj_list:
+        if current_md_obj.stem == file_name:
+            logger.info(f"向指定地址:{zip_url}下载zip文件，解压后的文件名，等于原文件名{file_name},直接返回!")
+            return current_md_obj
+
+    md_obj_path:Path = None
+    for current_md_obj in md_obj_list:
+        if current_md_obj.stem == 'full':
+            md_obj_path = current_md_obj
+            break
+    if not md_obj_path:
+        md_obj_path = md_obj_list[0]
+
+    # 3.重命名
+    logger.info(f"触发了md文件的重命名机制，原名称:{md_obj_path.stem}，目标名称:{file_name}")
+    # md_obj_path.rename(f"{file_name}.md")
+    md_obj_path = md_obj_path.rename(md_obj_path.with_name(f"{file_name}.md"))
+    return md_obj_path
 
 def parse_pdf_to_markdown(state: ImportGraphState) -> ImportGraphState:
     """
@@ -157,5 +202,8 @@ def parse_pdf_to_markdown(state: ImportGraphState) -> ImportGraphState:
     pdf_path_obj, local_dir_obj = validate_pdf_paths(state)
     # 2.mineru解析pdf文件并返回zip的下载地址
     zip_url: str = upload_pdf_and_poll(pdf_path_obj)
+    # 3.根据zip_url下载并解压和重命名md文件
+    md_path_obj:Path = download_and_extract_markdown(zip_url,local_dir_obj,pdf_path_obj.stem)
+    state['md_path'] = str(md_path_obj)
 
     return state

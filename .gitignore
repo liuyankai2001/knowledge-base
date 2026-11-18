@@ -12,4 +12,5 @@ wheels/
 tests
 logs
 doc
+output
 .env
