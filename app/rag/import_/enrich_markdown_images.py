@@ -9,7 +9,7 @@ from minio.deleteobjects import DeleteObject
 
 from app.process.import_.agent.state import ImportGraphState
 from app.rag.import_.config import PORTED_IMAGE_EXTENSIONS
-from app.shared.runtime.logger import logger
+from app.shared.runtime.logger import logger,step_log
 from app.infra.llm.providers import llm_providers
 from app.infra.object_storage.minio_gateway import minio_gateway
 from app.shared.runtime.load_prompt import load_prompt
@@ -111,12 +111,12 @@ def summarize_images(image_content: list[tuple[str, str, tuple[str, str]]], stem
     return image_summaries
 
 
-def upload_images_and_replace(md_content: str, image_summarizes: dict[str, str],
+def upload_images_and_replace(md_content: str, image_summaries: dict[str, str],
                               image_content: list[tuple[str, str, tuple[str, str]]], stem: str) -> str:
     """
     进行文件上传和md_content替换
     :param md_content:旧的md_content
-    :param image_summarizes:图片的总结描述
+    :param image_summaries:图片的总结描述
     :param image_content:
     :param stem:
     :return:
@@ -148,8 +148,31 @@ def upload_images_and_replace(md_content: str, image_summarizes: dict[str, str],
         except Exception as e:
             logger.warning(f"{image_name}图片上传minio失败，跳过本次，继续运行!")
             continue
+    if not image_urls:
+        logger.warning(f"图片上传全部失败!直接使用原md_content处理即可!")
+        return md_content
+
+    # 进行md_content内容替换
+    for image_name, image_url in image_urls.items():
+        image_summary = image_summaries.get(image_name)
+        reg = re.compile(r"\!\[.*?\]\(.*?" + re.escape(image_name) + r".*?\)")
+        md_content = reg.sub(lambda _: f"![{image_summary}]({image_url})", md_content)
+    return md_content
 
 
+def backup_new_md_content(md_content_new: str, md_path_obj: Path) -> str:
+    """
+    备份
+    :param md_content_new:
+    :param md_path_obj:
+    :return:
+    """
+    md_new_path_obj = md_path_obj.with_name(f"{md_path_obj.stem}_new{md_path_obj.suffix}")
+    md_new_path_obj.write_text(md_content_new, encoding='utf-8')
+    logger.info(f"将md_content_new进行备份，备份地址为：{md_new_path_obj}")
+    return str(md_new_path_obj)
+
+@step_log("enrich_markdown_images")
 def enrich_markdown_images(state: ImportGraphState) -> ImportGraphState:
     """
     Markdown 图片增强服务：
@@ -174,4 +197,12 @@ def enrich_markdown_images(state: ImportGraphState) -> ImportGraphState:
 
     # 5.文件上传和md_content内容替换
     md_content_new: str = upload_images_and_replace(md_content, image_summarizes, image_content, md_path_obj.stem)
+
+    # 6.修改state中的md_content
+    state['md_content'] = md_content_new
+
+    # 7.备份md_content
+    md_path_new: str = backup_new_md_content(md_content_new, md_path_obj)
+    state['md_path'] = md_path_new
+
     return state
