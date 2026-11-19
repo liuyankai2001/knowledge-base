@@ -1,9 +1,16 @@
 import re
+import base64
+
 from pathlib import Path
+from mimetypes import guess_type
+from langchain_core.messages import HumanMessage
+from langchain_core.output_parsers import StrOutputParser
 
 from app.process.import_.agent.state import ImportGraphState
 from app.rag.import_.config import PORTED_IMAGE_EXTENSIONS
 from app.shared.runtime.logger import logger
+from app.infra.llm.providers import llm_providers
+from app.shared.runtime.load_prompt import load_prompt
 
 
 def validates_and_get_data(state: ImportGraphState) -> tuple[str, Path, Path]:
@@ -54,6 +61,52 @@ def scan_images(images_path_obj: Path, md_content: str) -> list[tuple[str, str, 
     return images_context
 
 
+def summarize_images(image_content:list[tuple[str, str, tuple[str, str]]], stem:str)->dict[str,str]:
+    """
+    :param image_content:
+    :param stem:
+    :return:
+    """
+    image_summaries = {}
+
+    # 7.1 获取模型对象 vision_chat()
+    vision_client = llm_providers.vision_chat()
+
+    # 循环处理每一张图片
+    for image_name,image_path,context in image_content:
+
+        # 7.2 封装提示词（图片 / 文本）
+        image_text = load_prompt("image_summary",root_folder=stem,image_content=context)
+        image_path_obj:Path = Path(image_path)
+        image_base64_str = base64.b64encode(image_path_obj.read_bytes()).decode(encoding="utf-8")
+
+        human_message = HumanMessage(
+            content = [
+                {
+                    "type":"text",
+                    "text": image_text
+                },
+
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{guess_type(image_name)[0]};base64,{image_base64_str}"
+                    }
+                },
+
+            ]
+        )
+
+        # 7.3 封装一个调用chains StrOutputParser()
+        chains = vision_client | StrOutputParser()
+        # 7.4 执行调用链获取返回结果
+        image_summary = chains.invoke([human_message])
+        image_summaries[image_name] = image_summary
+        logger.debug(f"完成:{image_name}图片意图识别,识别内容:{image_summary}")
+    # 7.5 封装一个dict，并且返回即可
+    return image_summaries
+
+
 def enrich_markdown_images(state: ImportGraphState) -> ImportGraphState:
     """
     Markdown 图片增强服务：
@@ -73,4 +126,6 @@ def enrich_markdown_images(state: ImportGraphState) -> ImportGraphState:
     # [（xx.png, c: // xx.png,（上文，下文））]
     image_content: list[tuple[str, str, tuple[str, str]]] = scan_images(images_path_obj, md_content)
 
+    # 4.进行图片内容识别(视觉模型)
+    image_summarizes:dict[str,str] = summarize_images(image_content,md_path_obj.stem)
     return state

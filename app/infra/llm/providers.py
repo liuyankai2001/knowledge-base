@@ -12,4 +12,4 @@ class LLMProvider:
         return get_llm_client(vision_mode_name or infra_config.lm_config.lv_model)
 
 
-llm_provider = LLMProvider()
+llm_providers = LLMProvider()
