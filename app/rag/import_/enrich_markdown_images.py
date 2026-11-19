@@ -51,7 +51,7 @@ def scan_images(images_path_obj: Path, md_content: str) -> list[tuple[str, str, 
                 (pre_context, post_context)
             )
         )
-        return images_context
+    return images_context
 
 
 def enrich_markdown_images(state: ImportGraphState) -> ImportGraphState:
