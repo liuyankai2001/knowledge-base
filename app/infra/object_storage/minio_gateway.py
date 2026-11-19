@@ -21,12 +21,12 @@ class MinioGateWay:
         return get_minio_client()
 
 
-    def build_image_url(self,stem,object_name:str):
+    def build_image_url(self,stem,image_name:str):
         protocol = "https://" if infra_config.minio_config.minio_secure else "http://"
         ip_add = infra_config.minio_config.endpoint
         bucket_name = infra_config.minio_config.bucket_name
         img_dir = infra_config.minio_config.minio_img_dir
-        image_url = f"{protocol}{ip_add}/{bucket_name}{img_dir}/{stem}/{object_name}"
+        image_url = f"{protocol}{ip_add}/{bucket_name}{img_dir}/{stem}/{image_name}"
         return image_url
 
 minio_gateway = MinioGateWay()

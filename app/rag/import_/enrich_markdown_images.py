@@ -5,12 +5,15 @@ from pathlib import Path
 from mimetypes import guess_type
 from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import StrOutputParser
+from minio.deleteobjects import DeleteObject
 
 from app.process.import_.agent.state import ImportGraphState
 from app.rag.import_.config import PORTED_IMAGE_EXTENSIONS
 from app.shared.runtime.logger import logger
 from app.infra.llm.providers import llm_providers
+from app.infra.object_storage.minio_gateway import minio_gateway
 from app.shared.runtime.load_prompt import load_prompt
+from app.shared.utils.rate_limit_utils import apply_api_rate_limit
 
 
 def validates_and_get_data(state: ImportGraphState) -> tuple[str, Path, Path]:
@@ -61,7 +64,7 @@ def scan_images(images_path_obj: Path, md_content: str) -> list[tuple[str, str, 
     return images_context
 
 
-def summarize_images(image_content:list[tuple[str, str, tuple[str, str]]], stem:str)->dict[str,str]:
+def summarize_images(image_content: list[tuple[str, str, tuple[str, str]]], stem: str) -> dict[str, str]:
     """
     :param image_content:
     :param stem:
@@ -73,17 +76,18 @@ def summarize_images(image_content:list[tuple[str, str, tuple[str, str]]], stem:
     vision_client = llm_providers.vision_chat()
 
     # 循环处理每一张图片
-    for image_name,image_path,context in image_content:
-
+    for image_name, image_path, context in image_content:
+        # 添加访问限制
+        apply_api_rate_limit()
         # 7.2 封装提示词（图片 / 文本）
-        image_text = load_prompt("image_summary",root_folder=stem,image_content=context)
-        image_path_obj:Path = Path(image_path)
+        image_text = load_prompt("image_summary", root_folder=stem, image_content=context)
+        image_path_obj: Path = Path(image_path)
         image_base64_str = base64.b64encode(image_path_obj.read_bytes()).decode(encoding="utf-8")
 
         human_message = HumanMessage(
-            content = [
+            content=[
                 {
-                    "type":"text",
+                    "type": "text",
                     "text": image_text
                 },
 
@@ -107,6 +111,45 @@ def summarize_images(image_content:list[tuple[str, str, tuple[str, str]]], stem:
     return image_summaries
 
 
+def upload_images_and_replace(md_content: str, image_summarizes: dict[str, str],
+                              image_content: list[tuple[str, str, tuple[str, str]]], stem: str) -> str:
+    """
+    进行文件上传和md_content替换
+    :param md_content:旧的md_content
+    :param image_summarizes:图片的总结描述
+    :param image_content:
+    :param stem:
+    :return:
+    """
+    minio_client = minio_gateway.minio_client
+    # 先删除旧的
+    select_object_list = minio_client.list_objects(
+        bucket_name=minio_gateway.bucket_name,
+        prefix=minio_gateway.minio_img_dir[1:] + '/' + stem,
+        recursive=True  # 获取前缀文件夹下所有对象
+    )
+    delete_object_list = [DeleteObject(select_object.object_name) for select_object in select_object_list]
+    errors = minio_client.remove_objects(bucket_name=minio_gateway.bucket_name, delete_object_list=delete_object_list)
+    for error in errors:
+        logger.warning(f"文件删除状态:{error}")
+    # 上传
+    image_urls = {}
+    for image_name, image_path_str, _ in image_content:
+        try:
+            object_name = minio_gateway.minio_img_dir + '/' + stem + '/' + image_name
+            minio_client.fput_object(bucket_name=minio_gateway.bucket_name, object_name=object_name,
+                                     file_path=image_path_str,
+                                     content_type=guess_type(image_name[0]))
+            # 图片访问地址
+            # http://ip:9000/桶名/文件夹名/图片名
+            image_url = minio_gateway.build_image_url(stem, image_name)
+            image_urls[image_name] = image_url
+
+        except Exception as e:
+            logger.warning(f"{image_name}图片上传minio失败，跳过本次，继续运行!")
+            continue
+
+
 def enrich_markdown_images(state: ImportGraphState) -> ImportGraphState:
     """
     Markdown 图片增强服务：
@@ -127,5 +170,8 @@ def enrich_markdown_images(state: ImportGraphState) -> ImportGraphState:
     image_content: list[tuple[str, str, tuple[str, str]]] = scan_images(images_path_obj, md_content)
 
     # 4.进行图片内容识别(视觉模型)
-    image_summarizes:dict[str,str] = summarize_images(image_content,md_path_obj.stem)
+    image_summarizes: dict[str, str] = summarize_images(image_content, md_path_obj.stem)
+
+    # 5.文件上传和md_content内容替换
+    md_content_new: str = upload_images_and_replace(md_content, image_summarizes, image_content, md_path_obj.stem)
     return state
