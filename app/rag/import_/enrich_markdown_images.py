@@ -146,7 +146,7 @@ def upload_images_and_replace(md_content: str, image_summaries: dict[str, str],
             image_urls[image_name] = image_url
 
         except Exception as e:
-            logger.warning(f"{image_name}图片上传minio失败，跳过本次，继续运行!")
+            logger.warning(f"{image_name}图片上传minio失败，原因:{e},跳过本次，继续运行!")
             continue
     if not image_urls:
         logger.warning(f"图片上传全部失败!直接使用原md_content处理即可!")
