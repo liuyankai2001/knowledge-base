@@ -139,7 +139,7 @@ def upload_images_and_replace(md_content: str, image_summaries: dict[str, str],
             object_name = minio_gateway.minio_img_dir + '/' + stem + '/' + image_name
             minio_client.fput_object(bucket_name=minio_gateway.bucket_name, object_name=object_name,
                                      file_path=image_path_str,
-                                     content_type=guess_type(image_name[0]))
+                                     content_type=guess_type(image_name)[0])
             # 图片访问地址
             # http://ip:9000/桶名/文件夹名/图片名
             image_url = minio_gateway.build_image_url(stem, image_name)
