@@ -2,7 +2,10 @@ import re
 from pathlib import Path
 from typing import Any
 
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
 from app.process.import_.agent.state import ImportGraphState
+from app.rag.import_.config import CHUNK_SIZE
 from app.shared.runtime.logger import logger
 
 def load_markdown_content(state:ImportGraphState)->tuple[str,str]:
@@ -91,6 +94,74 @@ def split_chunks_document(md_content, file_title)->list[dict[str,Any]]:
     return chunks
 
 
+def _split_long_chunk(chunk)->list[dict[str,Any]]:
+    """
+
+    :param chunk: title file_title content
+    :return:
+    """
+    content = chunk.get("content")
+    title = chunk.get("title")
+    file_title = chunk.get("file_title")
+    clear_content = content[len(title)+1:]
+
+    sub_content_prefix = title + "\n"
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=CHUNK_SIZE-len(sub_content_prefix),
+        chunk_overlap=0,
+        separators=["\n\n", "\n", "。 ", "! ", "? ", "; ", ".", "!", "?", ";", " "]
+    )
+    sub_chunk_list = []
+    for part_index, split_text in enumerate(splitter.split_text(clear_content),start=1):
+        split_text = split_text.strip()
+        content_sub_new = sub_content_prefix+split_text
+        sub_chunk_list.append({
+            "title":f"{title}_第{part_index}部分",
+            "content":content_sub_new,
+            "file_title":file_title,
+            "parent_title":title,
+            "part":part_index
+        })
+    logger.info(f"进入标题:{title},完成切割后,切成:{len(sub_chunk_list)}块!")
+    return sub_chunk_list
+
+
+def _merge_short_chunks_same_parent_title(refine_list):
+
+
+
+def refine_chunks(chunks) -> list[dict[str,Any]]:
+    """
+    进行精细切割!
+      长 -> 600 -> 短切
+      短 -> 400 -> 合并 -> 1000
+    :param chunks:
+    :return:
+    """
+    # 1. 定义接收最终结果的list
+    refine_list = []
+    # 2. 进行循环处理查看是否过长
+    for chunk in chunks:
+        content = chunk.get("content")
+        if len(content) > CHUNK_SIZE:
+            long_chunk_list = _split_long_chunk(chunk)
+        else:
+            refine_list.append(chunk)
+        # 3. 进行短合并处理
+    refine_list = _merge_short_chunks_same_parent_title(refine_list)
+
+    # 4. 补全属性..
+    for chunk in refine_list:
+        if "parent_title" not in chunk:
+            chunk['parent_title'] = chunk.get('title', "default_title")
+        if "part" not in chunk:
+            chunk['part'] = 1
+    # 5. 最终返回结果
+    logger.info(f"完成chunks的精细处理! 进入切块数量:{len(chunks)},处理后:{len(refine_list)}")
+    return refine_list
+
+
 def split_document(state: ImportGraphState) -> ImportGraphState:
     """
     文档切分服务：
@@ -104,5 +175,13 @@ def split_document(state: ImportGraphState) -> ImportGraphState:
 
     # 2.确保语义切割，根据标题切割
     chunks:list[dict[str,Any]] = split_chunks_document(md_content,file_title)
+
+    # 3. 进行精细切割处理
+    refine_chunks_list = refine_chunks(chunks)
+
+    # 4. 修改state -> chunks
+    state['chunks'] = refine_chunks_list
+    # 5. 备份refine_chunks_list  -> [{},{}] -> json字符串 -> 本地磁盘
+    backup_chunks_json(refine_chunks_list, state['md_path'])
 
     return state
