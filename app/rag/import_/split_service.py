@@ -66,11 +66,11 @@ def split_chunks_document(md_content, file_title)->list[dict[str,Any]]:
                     "title":current_title,
                     "file_title":file_title
                 })
-            current_title = line_strip
             if not current_title_lines and len(current_title_lines) > 0:
                 current_title_lines.append(line_strip)
             else:
                 current_title_lines = [line_strip]
+            current_title = line_strip
         else:
             current_title_lines.append(line_strip)
     # 扫尾
