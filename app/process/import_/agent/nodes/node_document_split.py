@@ -31,7 +31,7 @@ if __name__ == '__main__':
         logger.info("请检查文件路径，或手动将测试MD文件放入项目根目录的output目录下")
     else:
         test_state = {
-            "md_path": test_md_path,
+            "md_path": test_md_path,    
             "task_id": "test_task_123456",
             "md_content": "",
             "file_title": "hak180产品安全手册",
