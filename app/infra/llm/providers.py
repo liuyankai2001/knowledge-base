@@ -1,4 +1,5 @@
 from app.infra.config.providers import infra_config
+from app.shared.model import get_bge_m3_ef, generate_embeddings
 from app.shared.model.lm_utils import get_llm_client
 
 
@@ -10,6 +11,12 @@ class LLMProvider:
 
     def vision_chat(self,vision_mode_name:str = None):
         return get_llm_client(vision_mode_name or infra_config.lm_config.lv_model)
+
+    def bge_m3_embedding(self):
+        return get_bge_m3_ef()
+
+    def generate_embeddings(self,texts:list[str]):
+        return generate_embeddings(texts)
 
 
 llm_providers = LLMProvider()
