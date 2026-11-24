@@ -12,8 +12,7 @@ MINERU_DOWNLOAD_TIMEOUT_SECONDS = 30
 
 PDF_PARSE_SERVICE_LOCAL_DIR = "output"
 
-PORTED_IMAGE_EXTENSIONS ={".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
-
+PORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 
 # 文本切块最大长度：单个文本块最多包含 1000 字符（防止过长导致向量失真）
 CHUNK_MAX_SIZE = 1000
@@ -26,3 +25,5 @@ CHUNK_MIN = 400
 
 # 声明常量,切块的截取数量 默认: 10
 CHUNKS_SPLIT_TOP_NUMBER = 10
+
+EMBEDDING_BATCH_SIZE = 6
