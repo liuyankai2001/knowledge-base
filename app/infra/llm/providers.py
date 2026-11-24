@@ -6,7 +6,7 @@ from app.shared.model.lm_utils import get_llm_client
 class LLMProvider:
 
     # 获取普通大语言模型
-    def chat(self,model_name:str,json_mode:bool):
+    def chat(self,model_name:str=None,json_mode:bool=None):
         return get_llm_client(model=model_name,json_mode=json_mode)
 
     def vision_chat(self,vision_mode_name:str = None):

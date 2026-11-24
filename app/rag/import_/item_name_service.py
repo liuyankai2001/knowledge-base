@@ -123,6 +123,38 @@ def prepared_milvus_item_name_collection():
         index_params=index_params
     )
 
+
+def delete_and_insert_item_name(item_name, file_title):
+    """ 完成item_name替换工作 """
+    # 1.根据item_name生成稠密和稀疏向量（嵌入式模型）
+    result = llm_providers.generate_embeddings([item_name])
+    item_name_dense = result.get("dense")[0]
+    item_name_sparse = result.get("sparse")[0]
+
+    # 2.删除之前file_title对应的数据
+    milvus_client = milvus_gateway.milvus_client
+    milvus_client.delete(
+        collection_name=milvus_gateway.item_name_collection_name,
+        filter=f"file_title == '{file_title}'"
+    )
+
+    # 3.插入
+    data = [
+        {
+            "file_title":file_title,
+            "item_name":item_name,
+            "dense_vector":item_name_dense,
+            "sparse_vector":item_name_sparse
+        }
+    ]
+    milvus_client.insert(
+        collection_name=milvus_gateway.item_name_collection_name,
+        data=data
+    )
+    logger.info(f"完成{item_name}的数据更新或者插入!")
+
+
+
 def recognize_and_index_item_name(state: ImportGraphState) -> ImportGraphState:
     """
     主体识别服务：
@@ -135,8 +167,13 @@ def recognize_and_index_item_name(state: ImportGraphState) -> ImportGraphState:
     chunks, file_title = get_data_and_validates(state)
     # 2. 识别item_name
     item_name = recognize_item_name_by_chunks(chunks, file_title)
+    # 3. 给chunks的切块补全item_name属性
     chunk_update_item_name(chunks,item_name)
-
+    # 4. 提前准备对应的集合数据
     prepared_milvus_item_name_collection()
-
+    # 5. 插入item_name数据
+    delete_and_insert_item_name(item_name,file_title)
+    # 6. 更新state
+    state["chunks"] = chunks
+    state["item_name"] = item_name
     return state
