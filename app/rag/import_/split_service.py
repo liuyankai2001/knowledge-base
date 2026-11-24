@@ -60,18 +60,19 @@ def split_chunks_document(md_content, file_title) -> list[dict[str, Any]]:
         if not line_strip:  # 空行判断
             logger.warning("处理碰到空行!跳过本次处理!")
             continue
-        if line_strip.startswith("```") or line_strip.startswith("~~~"):
+        if line_strip.startswith("```") or line_strip.startswith("~~~"): # 如果是代码块就跳过
             is_code_block = not is_code_block
             current_title_lines.append(line_strip)
             continue
-        if not is_code_block and title_reg.match(line_strip):  # 有效标题
-            if current_title_lines and len(current_title_lines) > 1:
-                chunks.append({
+
+        if not is_code_block and title_reg.match(line_strip):  # 如果遇到标题且不在代码块里
+            if current_title and len(current_title_lines) > 1: # 如果当前块有内容，且标题也有内容（中间）
+                chunks.append({     # 加入
                     "content": "\n".join(current_title_lines),
                     "title": current_title,
                     "file_title": file_title
                 })
-            if not current_title_lines and len(current_title_lines) > 0:
+            if not current_title and len(current_title_lines) > 0: # 如果当前块有内容但是标题没内容
                 current_title_lines.append(line_strip)
             else:
                 current_title_lines = [line_strip]
@@ -168,7 +169,7 @@ def _merge_short_chunks_same_parent_title(refine_list) -> list[dict[str, Any]]:
             merged_chunk_list.append(base_chunk)
             base_chunk = next_chunk
 
-    if not base_chunk:
+    if base_chunk:
         merged_chunk_list.append(base_chunk)
 
     logger.info(f"进行短合并，合并之前:{len(refine_list)},合并之后:{len(merged_chunk_list)}")
@@ -190,6 +191,7 @@ def refine_chunks(chunks) -> list[dict[str, Any]]:
         content = chunk.get("content")
         if len(content) > CHUNK_SIZE:
             long_chunk_list = _split_long_chunk(chunk)
+            refine_list.extend(long_chunk_list)
         else:
             refine_list.append(chunk)
         # 3. 进行短合并处理
