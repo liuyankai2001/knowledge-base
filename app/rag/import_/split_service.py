@@ -80,7 +80,7 @@ def split_chunks_document(md_content, file_title) -> list[dict[str, Any]]:
         else:
             current_title_lines.append(line_strip)
     # 扫尾
-    if current_title_lines and len(current_title_lines) > 1:
+    if current_title and len(current_title_lines) > 1:
         chunks.append({
             "content": "\n".join(current_title_lines),
             "title": current_title,
