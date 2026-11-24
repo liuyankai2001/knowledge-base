@@ -4,7 +4,9 @@ from typing import Any
 
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.output_parsers import StrOutputParser
+from pymilvus import DataType
 
+from app.infra.vector_store.milvus_gateway import milvus_gateway
 from app.process.import_.agent.state import ImportGraphState
 from app.rag.import_.config import CHUNKS_SPLIT_TOP_NUMBER
 from app.shared.runtime.load_prompt import load_prompt
@@ -64,6 +66,63 @@ def recognize_item_name_by_chunks(chunks, file_title) -> str:
     logger.info(f"模型识别到item_name:{item_name}")
     return item_name
 
+
+def chunk_update_item_name(chunks, item_name):
+    for chunk in chunks:
+        chunk["item_name"] = item_name
+    logger.info(f"完成chunk的item_name属性更新：{item_name}")
+
+
+def prepared_milvus_item_name_collection():
+    item_name_collection_name = milvus_gateway.item_name_collection_name
+    milvus_client = milvus_gateway.milvus_client
+    # 判断是否有集合
+    has_item_name_collection = milvus_client.has_collection(collection_name=item_name_collection_name)
+
+    if has_item_name_collection:
+        # 有 True
+        logger.info(f"{item_name_collection_name}集合已经存在无需创建!")
+        return
+        # 3.没有创建集合
+    logger.info(f"{item_name_collection_name}集合不存在,开始创建!")
+    # 创建: schema field  主键  索引..
+    # 准备schema -> 这里可以添加field列信息
+    schema = milvus_client.create_schema(
+        auto_id=True,  # 主键自增长
+        enable_dynamic_field=True,  # schema设置列的信息! True插入了没有提前设定好的列,也可以进行存储
+    )
+    # 列 名称 类型 长度限制..
+    schema.add_field(field_name="pk", datatype=DataType.INT64, is_primary=True)
+    schema.add_field(field_name="file_title", datatype=DataType.VARCHAR, max_length=512)
+    schema.add_field(field_name="item_name", datatype=DataType.VARCHAR, max_length=512)
+    # FLOAT_VECTOR -> 32 没有启动fp16加速 cpu或者gpu没有加速   FLOAT16_VECTOR -> gpu fp16
+    # dim = 维度  -> 根据嵌入式模型生成的维度  bge-m3 1024
+    schema.add_field(field_name="dense_vector", datatype=DataType.FLOAT_VECTOR, dim=1024)
+    schema.add_field(field_name="sparse_vector", datatype=DataType.SPARSE_FLOAT_VECTOR)
+
+    # 索引
+    index_params = milvus_client.prepare_index_params()
+    index_params.add_index(
+        field_name="dense_vector",
+        index_type="HNSW",
+        metric_type="COSINE", # 稠密向量相似度：COSINE = IP 归一化l2
+        params={
+            "M":64, # 每个点最大连接数量
+            "efConstruction": 100 # 考虑连接的范围，在这个范围内确定M
+        }
+    )
+    index_params.add_index(
+        field_name="sparse_vector",
+        index_type="SPARSE_INVERTED_INDEX",
+        metric_type="IP",
+        params={"inverted_index_algo": "DAAT_MAXSCORE"},
+    )
+    milvus_client.create_collection(
+        collection_name=item_name_collection_name,
+        schema=schema,
+        index_params=index_params
+    )
+
 def recognize_and_index_item_name(state: ImportGraphState) -> ImportGraphState:
     """
     主体识别服务：
@@ -76,4 +135,8 @@ def recognize_and_index_item_name(state: ImportGraphState) -> ImportGraphState:
     chunks, file_title = get_data_and_validates(state)
     # 2. 识别item_name
     item_name = recognize_item_name_by_chunks(chunks, file_title)
+    chunk_update_item_name(chunks,item_name)
+
+    prepared_milvus_item_name_collection()
+
     return state
