@@ -72,8 +72,8 @@ def split_chunks_document(md_content, file_title) -> list[dict[str, Any]]:
                     "title": current_title,
                     "file_title": file_title
                 })
-            if not current_title and len(current_title_lines) > 0: # 如果当前块有内容但是标题没内容
-                current_title_lines.append(line_strip)
+            if not current_title and len(current_title_lines) > 0: # 如果当前块有内容但是标题没内容（内容开头）
+                current_title_lines.insert(0,line_strip)
             else:
                 current_title_lines = [line_strip]
             current_title = line_strip
@@ -89,7 +89,7 @@ def split_chunks_document(md_content, file_title) -> list[dict[str, Any]]:
 
     if len(chunks) == 0 and len(current_title_lines) > 0:
         chunks.append({
-            "content": "\n".join(current_title_lines),
+            "content": "default"+"\n"+"\n".join(current_title_lines),
             "title": "default",
             "file_title": file_title
         })
@@ -113,7 +113,7 @@ def _split_long_chunk(chunk) -> list[dict[str, Any]]:
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE - len(sub_content_prefix),
         chunk_overlap=0,
-        separators=["\n\n", "\n", "。 ", "! ", "? ", "; ", ".", "!", "?", ";", " "]
+        separators=["\n\n", "\n", "。 ", "! ", "? ", "; ", ".", "!", "?", ";", " ",""]
     )
     sub_chunk_list = []
     for part_index, split_text in enumerate(splitter.split_text(clear_content), start=1):
