@@ -31,15 +31,7 @@ def generate_answer(state: QueryGraphState) -> QueryGraphState:
             time.sleep(0.03)
 
         image_urls = ["https://example.com/demo-1.png", "https://example.com/demo-2.png"]
-        push_to_session(
-            session_id,
-            SSEEvent.FINAL,
-            {
-                "answer": final_text,
-                "status": "completed",
-                "image_urls": image_urls
-            }
-        )
+
         logger.info(f"流式输出完成，总长度: {len(final_text)}")
     else:
         final_text = base_answer
