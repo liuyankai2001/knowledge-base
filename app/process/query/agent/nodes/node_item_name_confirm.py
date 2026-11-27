@@ -20,15 +20,18 @@ def node_item_name_confirm(state):
     state = confirm_item_name(state)
 
     # 模拟item_name确定和rewriten_query重写之后存储用户问题的历史记录
-    history_repository.save_message(
-        session_id=state.get("session_id"),
-        role="user",
-        text=state.get("original_query"),
-        rewritten_query="修改后的original_query",
-        item_names=["test"],
-        image_urls=["http://www.baidu.com/img/bd_logo.png"]
-    )
+
 
     # 识别完成后写入完成列表，方便前端展示当前节点已结束。
     add_done_task(state["session_id"], sys._getframe().f_code.co_name, state["is_stream"])
     return state
+
+if __name__ == "__main__":
+    mock_state = {
+        "session_id": "test_session_001",
+        "original_query": "它怎么用？",
+        "is_stream": False,
+    }
+
+    result_state = node_item_name_confirm(mock_state)
+    print(result_state)
