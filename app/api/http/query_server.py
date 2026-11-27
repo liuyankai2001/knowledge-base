@@ -9,7 +9,8 @@ from fastapi.responses import FileResponse, StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
 
 from app.api.schema.query_schema import HealthResponseSchema, QueryRequestSchema, QueryNotStreamResponseSchema, \
-    QueryStreamResponseSchema
+    QueryStreamResponseSchema, HistoryClearResponseSchema, HistoryItemResponseSchema, HistoryListResponseSchema
+from app.infra.persistence.history_repository import history_repository
 # from app.infra.persistence.history_repository import history_repository
 #
 # from app.api.schema.query_schema import HealthResponseSchema, QueryRequestSchema, QueryStreamResponseSchema, \
@@ -134,6 +135,35 @@ def stream(session_id: str, request: Request):
         sse_generator(session_id, request),
         media_type="text/event-stream"
     )
+
+@app.delete("/history/{session_id}")
+def clear_history(session_id:str):
+    deleted_count = history_repository.clear_session(session_id=session_id)
+    return HistoryClearResponseSchema(
+        message=f"session_id:{session_id}历史聊天记录已经清空!",
+        deleted_count=deleted_count
+    )
+
+@app.get("/history/{session_id}")
+def get_history(session_id:str,limit:int=10):
+    history_list:list[dict] = history_repository.list_recent(session_id=session_id,limit=limit)
+    return HistoryListResponseSchema(
+        session_id=session_id,
+        items=[
+            HistoryItemResponseSchema(
+                id=str(item.get('_id')),
+                session_id=session_id,
+                role=item.get("role"),
+                text=item.get("text"),
+                rewritten_query=item.get("rewritten_query"),
+                item_names=item.get("item_names",[]),
+                image_urls=item.get("image_urls",[]),
+                ts=item.get("ts")
+            )
+            for item in history_list
+        ]
+    )
+
 
 
 if __name__ == '__main__':

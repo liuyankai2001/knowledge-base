@@ -1,6 +1,8 @@
 import json
 import sys
 
+
+from app.infra.persistence.history_repository import history_repository
 from app.shared.runtime.logger import node_log
 from app.rag.query.item_name_confirm_service import confirm_item_name
 from app.shared.utils.task_utils import add_done_task, add_running_task
@@ -16,6 +18,17 @@ def node_item_name_confirm(state):
     add_running_task(state["session_id"], "node_item_name_confirm", state["is_stream"])
     # 调用 rag/query service 层
     state = confirm_item_name(state)
+
+    # 模拟item_name确定和rewriten_query重写之后存储用户问题的历史记录
+    history_repository.save_message(
+        session_id=state.get("session_id"),
+        role="user",
+        text=state.get("original_query"),
+        rewritten_query="修改后的original_query",
+        item_names=["test"],
+        image_urls=["http://www.baidu.com/img/bd_logo.png"]
+    )
+
     # 识别完成后写入完成列表，方便前端展示当前节点已结束。
     add_done_task(state["session_id"], sys._getframe().f_code.co_name, state["is_stream"])
     return state

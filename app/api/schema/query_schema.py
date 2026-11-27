@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+from typing import Any
+
+from pydantic import BaseModel,Field
 
 # 健康检查响应json
 class HealthResponseSchema(BaseModel):
@@ -23,3 +25,22 @@ class QueryNotStreamResponseSchema(BaseModel):
     answer:str
     done_list:list[str]
     image_urls:list[str]
+
+# 会话记录删除响应
+class HistoryClearResponseSchema(BaseModel):
+    message:str
+    deleted_count:int
+
+class HistoryItemResponseSchema(BaseModel):
+    id:str
+    session_id:str
+    role:str
+    text:str
+    rewritten_query:str = None
+    item_names:list[str] = Field(default_factory=lambda : [])
+    image_urls:list[str] = []
+    ts:Any
+
+class HistoryListResponseSchema(BaseModel):
+    session_id:str
+    items:list[HistoryItemResponseSchema] = Field(default_factory=lambda :[])
